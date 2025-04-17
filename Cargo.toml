@@ -3,5 +3,6 @@ name = "fps"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
-raylib = { version = "5.5" }
+raylib = { path = "/home/bqrry/Desktop/raylib-rs/raylib" }
