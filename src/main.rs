@@ -2,13 +2,16 @@ use raylib::math::*;
 use raylib::prelude::*;
 use std::f32::consts::FRAC_PI_2;
 use std::f32::consts::TAU;
-use utils::c_bytesto_string;
 
 mod utils;
+use utils::c_bytesto_string;
+
+mod net_client;
+use net_client::NetworkClient;
 
 const SCREEN_WIDTH: i32 = 1280;
 const SCREEN_HEIGHT: i32 = 800;
-const CAMERA_MOVE_SPEED: f32 = 20.0;
+const CAMERA_MOVE_SPEED: f32 = 0.4;
 const MOUSE_SENSITIVITY: f32 = 0.0015;
 const FRICTION: f32 = 5.0;
 const GRAVITY: f32 = 9.8;
@@ -57,20 +60,6 @@ pub fn update_player(rl: &RaylibHandle, player: &mut Player, map: &Map) {
 
     let dt = rl.get_frame_time();
 
-    // Handle keyboard input
-    if rl.is_key_down(KeyboardKey::KEY_W) {
-        player.velocity += front * dt * CAMERA_MOVE_SPEED;
-    }
-    if rl.is_key_down(KeyboardKey::KEY_S) {
-        player.velocity -= front * dt * CAMERA_MOVE_SPEED;
-    }
-    if rl.is_key_down(KeyboardKey::KEY_A) {
-        player.velocity += side * dt * CAMERA_MOVE_SPEED;
-    }
-    if rl.is_key_down(KeyboardKey::KEY_D) {
-        player.velocity -= side * dt * CAMERA_MOVE_SPEED;
-    }
-
     // Handle jumping
     if rl.is_key_pressed(KeyboardKey::KEY_SPACE) && player.is_grounded {
         player.velocity.y = JUMP_FORCE;
@@ -87,12 +76,30 @@ pub fn update_player(rl: &RaylibHandle, player: &mut Player, map: &Map) {
     player.velocity.x /= friction_factor;
     player.velocity.z /= friction_factor;
 
-    let mut new_position = player.position;
+    let mut movement = Vector3::zero();
+    // Handle keyboard input
+    if rl.is_key_down(KeyboardKey::KEY_W) {
+        movement += front;
+    }
+    if rl.is_key_down(KeyboardKey::KEY_S) {
+        movement -= front;
+    }
+    if rl.is_key_down(KeyboardKey::KEY_A) {
+        movement += side;
+    }
+    if rl.is_key_down(KeyboardKey::KEY_D) {
+        movement -= side;
+    }
+    movement *= CAMERA_MOVE_SPEED;
+
+    let mut velocity = player.velocity;
+    velocity.x += movement.x;
+    velocity.z += movement.z;
 
     // Try movement in each axis separately
-    if player.velocity.x != 0.0 {
+    if velocity.x != 0.0 {
         let test_pos = Vector3::new(
-            player.position.x + player.velocity.x * dt,
+            player.position.x + velocity.x * dt,
             player.position.y,
             player.position.z,
         );
@@ -101,14 +108,15 @@ pub fn update_player(rl: &RaylibHandle, player: &mut Player, map: &Map) {
             max: player.bounding_box.max + test_pos,
         };
         if !check_collision(&world_box, &map.boundings) {
-            new_position.x = test_pos.x;
+            player.position.x = test_pos.x;
+            player.velocity.x = velocity.x;
         }
     }
 
-    if player.velocity.y != 0.0 {
+    if velocity.y != 0.0 {
         let test_pos = Vector3::new(
-            new_position.x,
-            player.position.y + player.velocity.y * dt,
+            player.position.x,
+            player.position.y + velocity.y * dt,
             player.position.z,
         );
         let world_box = BoundingBox {
@@ -116,7 +124,8 @@ pub fn update_player(rl: &RaylibHandle, player: &mut Player, map: &Map) {
             max: player.bounding_box.max + test_pos,
         };
         if !check_collision(&world_box, &map.boundings) {
-            new_position.y = test_pos.y;
+            player.position.y = test_pos.y;
+            player.velocity.y = velocity.y;
         } else {
             // If we hit something while moving up, stop upward movement
             if player.velocity.y > 0.0 {
@@ -130,35 +139,36 @@ pub fn update_player(rl: &RaylibHandle, player: &mut Player, map: &Map) {
         }
     }
 
-    if player.velocity.z != 0.0 {
+    if velocity.z != 0.0 {
         let test_pos = Vector3::new(
-            new_position.x,
-            new_position.y,
-            player.position.z + player.velocity.z * dt,
+            player.position.x,
+            player.position.y,
+            player.position.z + velocity.z * dt,
         );
         let world_box = BoundingBox {
             min: player.bounding_box.min + test_pos,
             max: player.bounding_box.max + test_pos,
         };
         if !check_collision(&world_box, &map.boundings) {
-            new_position.z = test_pos.z;
+            player.position.z = test_pos.z;
+            player.velocity.z = velocity.z;
         }
     }
 
     // Check if we're on the ground
-    if new_position.y <= GROUND_Y + player.bounding_box.min.y {
-        new_position.y = GROUND_Y + player.bounding_box.min.y;
+    if player.position.y <= GROUND_Y + player.bounding_box.min.y {
+        player.position.y = GROUND_Y + player.bounding_box.min.y;
         player.is_grounded = true;
         player.velocity.y = 0.0;
     }
 
-    player.position = new_position;
+    // player.position = new_position;
 
     // Update target after collision resolution
     player.target = player.position + front;
 }
 
-// ! Memory leaks for now
+// Assigns weak_textures to materials, must be unloaded manually
 pub fn load_hands(
     rl: &mut RaylibHandle,
     thread: &RaylibThread,
@@ -171,31 +181,46 @@ pub fn load_hands(
         .load_model_animations(&thread, "resources/fps_ak.glb")
         .expect("Could not load animations for resources/fps_ak.glb");
 
-
-    let ak74_color = unsafe { rl
-        .load_texture(&thread, "resources/textures/ak74m_AlbedoTransparency.png")
-        .expect("Failed to load ak74m_AlbedoTransparency.png").make_weak() };
-    let ak74_normal = unsafe { rl
-        .load_texture(&thread, "resources/textures/ak74m_Normal.png")
-        .expect("Failed to load ak74m_Normal.png").make_weak() };
-    let ak_ao = unsafe { rl
-        .load_texture(&thread, "resources/textures/ak74m_AO.png")
-        .expect("Failed to load ak74m_AO.png").make_weak() };
-    let ak_metallic = unsafe { rl
-        .load_texture(&thread, "resources/textures/ak74m_Metallic.png")
-        .expect("Failed to load ak74m_Metallic.png").make_weak() };
-    let ak_roughness = unsafe { rl
-        .load_texture(&thread, "resources/textures/ak74m_Roughness.png")
-        .expect("Failed to load ak74m_Roughness.png").make_weak() };
-    let arm_color = unsafe { rl
-        .load_texture(&thread, "resources/textures/armColor.png")
-        .expect("Failed to load armColor.png").make_weak() };
-    let arm_normal = unsafe { rl
-        .load_texture(&thread, "resources/textures/armNormal.png")
-        .expect("Failed to load armNormal.png").make_weak() };
-    let arm_roughness = unsafe { rl
-        .load_texture(&thread, "resources/textures/armRoughness.png")
-        .expect("Failed to load armRoughness.png").make_weak() };
+    let ak74_color = unsafe {
+        rl.load_texture(&thread, "resources/textures/ak74m_AlbedoTransparency.png")
+            .expect("Failed to load ak74m_AlbedoTransparency.png")
+            .make_weak()
+    };
+    let ak74_normal = unsafe {
+        rl.load_texture(&thread, "resources/textures/ak74m_Normal.png")
+            .expect("Failed to load ak74m_Normal.png")
+            .make_weak()
+    };
+    let ak_ao = unsafe {
+        rl.load_texture(&thread, "resources/textures/ak74m_AO.png")
+            .expect("Failed to load ak74m_AO.png")
+            .make_weak()
+    };
+    let ak_metallic = unsafe {
+        rl.load_texture(&thread, "resources/textures/ak74m_Metallic.png")
+            .expect("Failed to load ak74m_Metallic.png")
+            .make_weak()
+    };
+    let ak_roughness = unsafe {
+        rl.load_texture(&thread, "resources/textures/ak74m_Roughness.png")
+            .expect("Failed to load ak74m_Roughness.png")
+            .make_weak()
+    };
+    let arm_color = unsafe {
+        rl.load_texture(&thread, "resources/textures/armColor.png")
+            .expect("Failed to load armColor.png")
+            .make_weak()
+    };
+    let arm_normal = unsafe {
+        rl.load_texture(&thread, "resources/textures/armNormal.png")
+            .expect("Failed to load armNormal.png")
+            .make_weak()
+    };
+    let arm_roughness = unsafe {
+        rl.load_texture(&thread, "resources/textures/armRoughness.png")
+            .expect("Failed to load armRoughness.png")
+            .make_weak()
+    };
 
     let material = &mut hands.materials_mut()[1];
     material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, ak74_color);
@@ -206,9 +231,9 @@ pub fn load_hands(
     material.shader = (*shader).clone();
 
     let material = &mut hands.materials_mut()[2];
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO,arm_color);
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_NORMAL,arm_normal);
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ROUGHNESS,arm_roughness);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, arm_color);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_NORMAL, arm_normal);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ROUGHNESS, arm_roughness);
     material.shader = (*shader).clone();
 
     (hands, hands_animations)
@@ -254,6 +279,15 @@ pub fn load_lighting_shader(rl: &mut RaylibHandle, thread: &RaylibThread) -> Sha
     shader
 }
 
+pub fn unload_textures_from_model(rl: &mut RaylibHandle, thread: &RaylibThread, model: &Model) {
+    //Force unload textures
+    model.materials().iter().for_each(|material| {
+        material.maps().iter().for_each(|map| {
+            unsafe { rl.unload_texture(&thread, map.texture().to_owned()) };
+        });
+    });
+}
+
 fn main() {
     // Init raylib
     let (mut rl, thread) = raylib::init()
@@ -294,7 +328,7 @@ fn main() {
     let mut player = Player {
         position: Vector3 {
             x: map_center.x + 10.0,
-            y: map_center.y + 10.0, // Add 1.0 spawn above the ground
+            y: map_center.y + 10.0,
             z: map_center.z + 10.0,
         },
         velocity: Vector3 {
@@ -346,9 +380,21 @@ fn main() {
 
     let mut anim_current_frame = 0;
 
+    let frame_poses = player.model_animations[3].frame_poses();
+    let head_transform = frame_poses[anim_current_frame as usize][head_bone_index];
+    
+    //Shift the model origin to the head bone
+    player.model.set_transform(&Matrix::translate(-head_transform.translation.x, -head_transform.translation.y, -head_transform.translation.z));
+    
+    //Connect to the server
+    let mut net_client = NetworkClient::new().unwrap();
+    net_client.try_();
+
     // Render loop
     while !rl.window_should_close() {
         update_player(&rl, &mut player, &map);
+
+        net_client.update();
 
         anim_current_frame = (anim_current_frame + 1) % player.model_animations[3].frameCount;
         rl.update_model_animation(
@@ -358,40 +404,42 @@ fn main() {
             anim_current_frame,
         );
 
-        // Get the current bone transform for the head
-        let frame_poses = player.model_animations[3].frame_poses();
-        let head_transform = &frame_poses[anim_current_frame as usize][head_bone_index];
-
-        // Create rotation quaternion from model's yaw
-        let model_rotation =
-            Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), player.orientation.y);
-
-        // Rotate the head bone's translation by the model's rotation
-        let rotated_head_offset = head_transform.translation.rotate_by(model_rotation);
-
-        camera.position = player.position + rotated_head_offset;
-        camera.target = player.target + rotated_head_offset;
+        camera.position = player.position;
+        camera.target = player.target;
 
         shader.set_shader_value(view_pos_loc, camera.position);
 
-        let mut dhl = rl.begin_drawing(&thread);
-        dhl.clear_background(Color::WHITE);
+        // Draw
+        {
+            let mut dhl = rl.begin_drawing(&thread);
+            dhl.clear_background(Color::WHITE);
 
-        let mut d3d = dhl.begin_mode3D(&camera);
+            let mut d3d = dhl.begin_mode3D(&camera);
 
-        // Draw the model at player position
-        d3d.draw_model_ex(
-            &player.model,
-            player.position,
-            Vector3::new(0.0, 1.0, 0.0),
-            player.orientation.y.to_degrees(),
-            Vector3::new(1.0, 1.0, 1.0),
-            Color::WHITE,
-        );
+            // Draw the model at player position
+            let (axis, angle) =
+                (Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), player.orientation.y)
+                    * Quaternion::from_axis_angle(
+                        Vector3::new(1.0, 0.0, 0.0),
+                        player.orientation.x,
+                    ))
+                .to_axis_angle();
 
-        d3d.draw_model(&map.model, Vector3::new(0.0, 0.0, 0.0), 1.0, Color::WHITE);
+            d3d.draw_model_ex(
+                &player.model,
+                player.position,
+                axis,
+                angle.to_degrees(),
+                Vector3::new(1.0, 1.0, 1.0),
+                Color::WHITE,
+            );
 
-        drop(d3d);
-        drop(dhl);
+            d3d.draw_model(&map.model, Vector3::new(0.0, 0.0, 0.0), 1.0, Color::WHITE);
+
+            drop(d3d);
+            drop(dhl);
+        }
     }
+
+    unload_textures_from_model(&mut rl, &thread, &player.model);
 }

@@ -6,3 +6,4 @@ edition = "2024"
 
 [dependencies]
 raylib = { path = "/home/bqrry/Desktop/raylib-rs/raylib" }
+enet = "0.3.0"

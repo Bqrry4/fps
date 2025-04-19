@@ -1,0 +1,8 @@
+>> load models
+>> connect to server
+>> send data by each loop
+>> check for data in the same frame
+
+q:
+when to load the other's texture.. 
+a: just load default and change when received the data, match matching logic too much
