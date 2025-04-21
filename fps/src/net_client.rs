@@ -85,24 +85,12 @@ impl NetworkClient {
                         // Add new player
                         self.remotePlayers.push(info);
                     }
-
-                    let data = packet.data();
-                    if data.len() == 4 {
-                        let id = i32::from_le_bytes(data[0..4].try_into().expect("slice with incorrect length"));
-                        if id != CLIENT_ID.load(Ordering::SeqCst) {
-                            let player_info: PlayerInfo = bincode::deserialize(data).expect("deserialization failed");
-                            self.remotePlayers.push(player_info);
-                        }
-                    } else {
-                        println!("Invalid packet length");
-                    }
                 }
 
                 //Ignore these for now
                 Event::Connect { .. } => {}
                 Event::Disconnect { .. } => {}
             }
-            println!("received event: {:#?}", e);
         }
     }
 
