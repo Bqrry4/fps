@@ -2,12 +2,16 @@ use raylib::math::*;
 use raylib::prelude::*;
 use std::f32::consts::FRAC_PI_2;
 use std::f32::consts::TAU;
+use std::sync::atomic::Ordering;
 
 mod utils;
 use utils::c_bytesto_string;
 
 mod net_client;
 use net_client::NetworkClient;
+
+mod dto;
+use dto::PlayerInfo;
 
 const SCREEN_WIDTH: i32 = 1280;
 const SCREEN_HEIGHT: i32 = 800;
@@ -258,7 +262,7 @@ pub fn load_lighting_shader(rl: &mut RaylibHandle, thread: &RaylibThread) -> Sha
     shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize] =
         shader.get_shader_location("viewPos");
 
-    let ambient_intensity = 0.02;
+    let ambient_intensity = 0.1;
     let ambient_color = Vector4 {
         x: 26.0 / 255.0,
         y: 32.0 / 255.0,
@@ -294,7 +298,7 @@ fn main() {
         .size(SCREEN_WIDTH, SCREEN_HEIGHT)
         .title("Important!")
         .msaa_4x()
-        .fullscreen()
+        // .fullscreen()
         .build();
     rl.set_target_fps(60);
     rl.hide_cursor();
@@ -388,13 +392,21 @@ fn main() {
     
     //Connect to the server
     let mut net_client = NetworkClient::new().unwrap();
-    net_client.try_();
+    net_client.connect().unwrap();
 
     // Render loop
     while !rl.window_should_close() {
         update_player(&rl, &mut player, &map);
 
         net_client.update();
+        net_client.send_update(PlayerInfo{
+            id: net_client::CLIENT_ID.load(Ordering::SeqCst),
+            position_x: player.position.x,
+            position_y: player.position.y,
+            position_z: player.position.z,
+            yaw: player.orientation.y,
+            pitch: player.orientation.x,
+        });
 
         anim_current_frame = (anim_current_frame + 1) % player.model_animations[3].frameCount;
         rl.update_model_animation(
@@ -435,6 +447,15 @@ fn main() {
             );
 
             d3d.draw_model(&map.model, Vector3::new(0.0, 0.0, 0.0), 1.0, Color::WHITE);
+
+
+            net_client.remotePlayers.iter().for_each(|p|{
+                d3d.draw_cube(Vector3{
+                    x: p.position_x,
+                    y: p.position_y,
+                    z: p.position_z
+                }, 10.0, 10.0, 10.0, Color::BLACK);
+            });
 
             drop(d3d);
             drop(dhl);

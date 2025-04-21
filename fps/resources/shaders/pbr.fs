@@ -44,7 +44,6 @@ uniform float aoValue = 1.0;
 uniform float emissivePower;
 
 // Input lighting values
-// uniform Light lights[MAX_LIGHTS];
 uniform vec3 viewPos;
 
 uniform vec3 ambientColor;
@@ -82,7 +81,7 @@ vec3 ComputePBR() {
   lights[0].position = vec3(100.0, 100.0, 100.0); // Far away position
   lights[0].target = vec3(0.0, 0.0, 0.0);
   lights[0].color = vec4(1.0, 0.98, 0.85, 1.0); // Warm sunlight color
-  lights[0].intensity = 30.0;
+  lights[0].intensity = 20.0;
 
   lights[1].enabled = 1;
   lights[1].type = LIGHT_POINT;
