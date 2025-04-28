@@ -15,6 +15,9 @@ use net_client::NetworkClient;
 mod dto;
 use dto::PlayerInfo;
 
+mod m_player;
+use m_player::MPlayer;
+
 const SCREEN_WIDTH: i32 = 1280;
 const SCREEN_HEIGHT: i32 = 800;
 const CAMERA_MOVE_SPEED: f32 = 0.4;
@@ -118,7 +121,6 @@ pub fn update_player(rl: &RaylibHandle, player: &mut Player, map: &Map) {
             player.position.y = test_pos.y;
             player.velocity.y = velocity.y;
         } else {
-            println!("Collision detected while moving up/down");
             // If we hit something while moving up, stop upward movement
             if player.velocity.y > 0.0 {
                 player.velocity.y = 0.0;
@@ -180,7 +182,7 @@ pub fn update_player(rl: &RaylibHandle, player: &mut Player, map: &Map) {
 fn draw_bounding_box(d3d: &mut RaylibMode3D<RaylibDrawHandle>, bbox: &BoundingBox, color: Color) {
     let min = bbox.min;
     let max = bbox.max;
-    
+
     // Draw box edges
     d3d.draw_line3D(
         Vector3::new(min.x, min.y, min.z),
@@ -257,9 +259,12 @@ pub fn load_hands(
         .expect("Could not load animations for resources/fps_ak.glb");
 
     let ak74_color = unsafe {
-        rl.load_texture(&thread, "resources/textures/ak/ak74m_AlbedoTransparency.png")
-            .expect("Failed to load ak74m_AlbedoTransparency.png")
-            .make_weak()
+        rl.load_texture(
+            &thread,
+            "resources/textures/ak/ak74m_AlbedoTransparency.png",
+        )
+        .expect("Failed to load ak74m_AlbedoTransparency.png")
+        .make_weak()
     };
     let ak74_normal = unsafe {
         rl.load_texture(&thread, "resources/textures/ak/ak74m_Normal.png")
@@ -312,6 +317,48 @@ pub fn load_hands(
     material.shader = (*shader).clone();
 
     (hands, hands_animations)
+}
+
+pub fn load_m_player(
+    rl: &mut RaylibHandle,
+    thread: &RaylibThread,
+    shader: &Shader,
+) -> (Model, Vec<ModelAnimation>) {
+    let mut m_player = rl.load_model(&thread, "resources/m_player.gltf").unwrap();
+    let mut m_player_animations = rl
+        .load_model_animations(&thread, "resources/m_player.gltf")
+        .unwrap();
+
+    // Find the head bone index
+    let head_bone_index = m_player
+        .bones()
+        .unwrap()
+        .iter()
+        .position(|bone| c_bytesto_string(&bone.name).eq("mixamorig:Head"))
+        .unwrap();
+
+    let frame_poses = m_player_animations[0].frame_poses();
+    let head_transform = frame_poses[0][head_bone_index];
+
+    // Apply rotation and scale to the model
+    let scale = Matrix::scale(0.01, 0.01, 0.01);
+    let rotate = Matrix::rotate(Vector3::new(1.0, 0.0, 0.0), PI / 2.0);
+    let translate = Matrix::translate(
+        -head_transform.translation.x,
+        -head_transform.translation.y,
+        -head_transform.translation.z,
+    );
+    let transform = translate * rotate * scale;
+    m_player.set_transform(&transform);
+    rl.update_model_animation(&thread, &mut m_player, &m_player_animations[0], 0);
+
+    // Apply shader to model
+    for i in 0..m_player.materials().len() {
+        let material = &mut m_player.materials_mut()[i];
+        material.shader = (*shader).clone();
+    }
+
+    (m_player, m_player_animations)
 }
 
 pub fn load_lighting_shader(rl: &mut RaylibHandle, thread: &RaylibThread) -> Shader {
@@ -398,45 +445,10 @@ fn main() {
     let map_bounding_box = map.model.get_model_bounding_box();
     let map_center = (map_bounding_box.min + map_bounding_box.max) * 0.5;
 
-    //Load the multiplayer model
-    let mut m_player = rl.load_model(&thread, "resources/m_player.gltf").unwrap();
-    let mut m_player_animations = rl
-        .load_model_animations(&thread, "resources/m_player.gltf")
-        .unwrap();
-
-
-    // Find the head bone index
-    let head_bone_index = m_player
-        .bones()
-        .unwrap()
-        .iter()
-        .position(|bone| c_bytesto_string(&bone.name).eq("mixamorig:Head"))
-        .unwrap();
-
-    println!("Head bone index: {}", head_bone_index);
-
-    let frame_poses = m_player_animations[0].frame_poses();
-    let head_transform = frame_poses[0][head_bone_index];
-    
-    // Apply rotation and scale to the model
-    let scale = Matrix::scale(0.01,0.01,0.01);
-    let rotate = Matrix::rotate(Vector3::new(1.0, 0.0, 0.0), PI / 2.0);
-    let translate = Matrix::translate(
-        -head_transform.translation.x,
-        -head_transform.translation.y,
-        -head_transform.translation.z,
-    );
-    let transform =  translate * rotate * scale ;
-    m_player.set_transform(&transform);
-    rl.update_model_animation(
-        &thread,
-        &mut m_player,
-        &m_player_animations[0],
-        0,
-    );
+    let m_player = MPlayer::load(&mut rl, &thread, &shader).unwrap();
 
     //This is the T pose bounding box as raylib does not count transforms from animation
-    let mut player_box = m_player.get_model_bounding_box();
+    let mut player_box = m_player.model.get_model_bounding_box();
     //-! Little bug with this model, y is switched
     swap(&mut player_box.min.y, &mut player_box.max.y);
 
@@ -464,7 +476,6 @@ fn main() {
         model: hands,
         is_grounded: true,
     };
-
 
     let mut camera = Camera3D::perspective(
         Vector3 {
@@ -542,7 +553,7 @@ fn main() {
         // Draw
         {
             let mut dhl = rl.begin_drawing(&thread);
-            dhl.clear_background(Color::WHITE);
+            dhl.clear_background(Color::BLACK);
 
             let mut d3d = dhl.begin_mode3D(&camera);
 
@@ -564,15 +575,14 @@ fn main() {
                 Color::WHITE,
             );
 
-            d3d.draw_model(&map.model, Vector3::new(0.0, 0.0, 0.0), 1.0, Color::WHITE);
-
+            //d3d.draw_model(&map.model, Vector3::new(0.0, 0.0, 0.0), 1.0, Color::WHITE);
 
             let world_box = BoundingBox {
                 min: player.bounding_box.min + player.position,
                 max: player.bounding_box.max + player.position,
             };
             draw_bounding_box(&mut d3d, &world_box, Color::RED);
-            
+
             // Also draw map bounding boxes for debugging
             for bbox in &map.boundings {
                 draw_bounding_box(&mut d3d, bbox, Color::GREEN);
@@ -581,21 +591,27 @@ fn main() {
             //Draw remote players
             net_client.remotePlayers.iter().for_each(|p| {
 
-                d3d.draw_model_ex(
-                    &m_player,
-                    Vector3::new(p.position_x, p.position_y, p.position_z),
-                    Vector3::new(0.0, 1.0, 0.0),
-                    p.yaw.to_degrees(),
-                    Vector3::new(1.0, 1.0, 1.0),
-                    Color::WHITE,
+                m_player.draw(
+                    &mut d3d, 
+                    &Matrix::translate(p.position_x, p.position_y, p.position_z), 
+                    &Matrix::rotate(Vector3::new(0.0, 1.0, 0.0), p.yaw)
                 );
 
                 let world_box = BoundingBox {
-                    min: player.bounding_box.min + Vector3 { x: p.position_x, y: p.position_y, z: p.position_z },
-                    max: player.bounding_box.max + Vector3 { x: p.position_x, y: p.position_y, z: p.position_z },
+                    min: player.bounding_box.min
+                        + Vector3 {
+                            x: p.position_x,
+                            y: p.position_y,
+                            z: p.position_z,
+                        },
+                    max: player.bounding_box.max
+                        + Vector3 {
+                            x: p.position_x,
+                            y: p.position_y,
+                            z: p.position_z,
+                        },
                 };
                 draw_bounding_box(&mut d3d, &world_box, Color::RED);
-                
             });
 
             drop(d3d);
