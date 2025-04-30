@@ -13,7 +13,7 @@ import { irysUploader } from "@metaplex-foundation/umi-uploader-irys"
 import { readFile } from "fs/promises";
 import Wallet from "@coral-xyz/anchor/dist/esm/nodewallet.js"
 
-const keypair = getKeypairFromEnvironment("WS_1");
+const keypair = getKeypairFromEnvironment("WS_2");
 
 const cluster = clusterApiUrl("devnet");
 const connection = new Connection(cluster, "confirmed");

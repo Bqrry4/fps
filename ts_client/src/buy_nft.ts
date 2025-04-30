@@ -13,7 +13,7 @@ import {
 } from "@metaplex-foundation/mpl-token-metadata";
 import { fromWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters";
 
-const keypair = getKeypairFromEnvironment("WS_2");
+const keypair = getKeypairFromEnvironment("WS_1");
 const cluster = clusterApiUrl("devnet");
 const connection = new Connection(cluster, "confirmed");
 
@@ -61,5 +61,5 @@ async function buy_nft(mint: PublicKey) {
     console.log(`New edition created: TxID ${sigLink}`);
 }
 
-let mint = new PublicKey("6vr72S4nJHGudrXe1wswi3S693fxNTBWRPagGH8cS2iW");
+let mint = new PublicKey("GtDW2nYJAcJpNyA2tdYXyMhQvxd88PEZVZowpU6utXvM");
 buy_nft(mint);

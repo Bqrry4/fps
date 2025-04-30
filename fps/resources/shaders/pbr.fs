@@ -26,7 +26,9 @@ out vec4 finalColor;
 
 // Input uniform values
 uniform sampler2D albedoMap;
-uniform sampler2D mraMap;
+uniform sampler2D mMap;
+uniform sampler2D rMap;
+uniform sampler2D aoMap;
 uniform sampler2D normalMap;
 uniform sampler2D emissiveMap; // r: Hight g:emissive
 
@@ -72,35 +74,35 @@ float GeomSmith(float nDotV, float nDotL, float roughness) {
 }
 
 vec3 ComputePBR() {
-  int numOfLights = 4;
-  Light lights[4];
+  int numOfLights = 1;
+  Light lights[1];
 
   // Sun
   lights[0].enabled = 1;
-  lights[0].type = LIGHT_DIRECTIONAL;             // Changed to directional
-  lights[0].position = vec3(100.0, 100.0, 100.0); // Far away position
-  lights[0].target = vec3(0.0, 0.0, 0.0);
-  lights[0].color = vec4(1.0, 0.98, 0.85, 1.0); // Warm sunlight color
-  lights[0].intensity = 20.0;
+  lights[0].type = LIGHT_DIRECTIONAL; 
+  lights[0].position = vec3(-100.0, 30.0, 100.0);
+  lights[0].target = vec3(-20.0, 0.0, 20.0);
+  lights[0].color = vec4(1.0, 0.98, 0.85, 1.0);
+  lights[0].intensity = 30.0;
 
-  lights[1].enabled = 1;
-  lights[1].type = LIGHT_POINT;
-  lights[1].position = vec3(2.0, 1.0, 1.0);
-  lights[1].target = vec3(0.0, 0.0, 0.0);
-  lights[1].color = vec4(0.0, 1.0, 0.0, 1.0);
-  lights[1].intensity = 13.3;
-  lights[2].enabled = 1;
-  lights[2].type = LIGHT_POINT;
-  lights[2].position = vec3(-2.0, 1.0, 1.0);
-  lights[2].target = vec3(0.0, 0.0, 0.0);
-  lights[2].color = vec4(1.0, 0.0, 0.0, 1.0);
-  lights[2].intensity = 18.3;
-  lights[3].enabled = 1;
-  lights[3].type = LIGHT_POINT;
-  lights[3].position = vec3(1.0, 1.0, -2.0);
-  lights[3].target = vec3(0.0, 0.0, 0.0);
-  lights[3].color = vec4(0.0, 0.0, 1.0, 1.0);
-  lights[3].intensity = 12.0;
+  // lights[1].enabled = 1;
+  // lights[1].type = LIGHT_POINT;
+  // lights[1].position = vec3(2.0, 1.0, 1.0);
+  // lights[1].target = vec3(0.0, 0.0, 0.0);
+  // lights[1].color = vec4(0.0, 1.0, 0.0, 1.0);
+  // lights[1].intensity = 13.3;
+  // lights[2].enabled = 1;
+  // lights[2].type = LIGHT_POINT;
+  // lights[2].position = vec3(-2.0, 1.0, 1.0);
+  // lights[2].target = vec3(0.0, 0.0, 0.0);
+  // lights[2].color = vec4(1.0, 0.0, 0.0, 1.0);
+  // lights[2].intensity = 18.3;
+  // lights[3].enabled = 1;
+  // lights[3].type = LIGHT_POINT;
+  // lights[3].position = vec3(1.0, 1.0, -2.0);
+  // lights[3].target = vec3(0.0, 0.0, 0.0);
+  // lights[3].color = vec4(0.0, 0.0, 1.0, 1.0);
+  // lights[3].intensity = 12.0;
 
   vec3 albedo = texture(albedoMap, fragTexCoord).rgb;
   albedo = vec3(albedoColor.x * albedo.x, albedoColor.y * albedo.y,
@@ -111,10 +113,12 @@ vec3 ComputePBR() {
   float ao = clamp(aoValue, 0.0, 1.0);
 
   if (useTexMRA == 1) {
-    vec4 mra = texture(mraMap, fragTexCoord);
-    metallic = clamp(mra.r + metallicValue, 0.04, 1.0);
-    roughness = clamp(mra.g + roughnessValue, 0.04, 1.0);
-    ao = (mra.b + aoValue) * 0.5;
+    vec4 m = texture(mMap, fragTexCoord);
+    vec4 r = texture(rMap, fragTexCoord);
+    vec4 ao_m = texture(aoMap, fragTexCoord);
+    metallic = clamp(m.r + metallicValue, 0.04, 1.0);
+    roughness = clamp(r.r + roughnessValue, 0.04, 1.0);
+    ao = (ao_m.r + aoValue) * 0.5;
   }
 
   vec3 N = normalize(fragNormal);

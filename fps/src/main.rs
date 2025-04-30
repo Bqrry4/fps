@@ -19,6 +19,7 @@ use sol_client::SolanaClient;
 use raylib::math::*;
 use raylib::prelude::*;
 use std::collections::HashMap;
+use std::env;
 use std::f32::consts::FRAC_PI_2;
 use std::f32::consts::PI;
 use std::f32::consts::TAU;
@@ -327,7 +328,10 @@ pub fn load_hands(
     material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_METALNESS, &gun_textures["m"]);
     material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_NORMAL, &gun_textures["n"]);
     material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ROUGHNESS, &gun_textures["r"]);
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_OCCLUSION,&gun_textures["ao"]);
+    material.set_material_texture(
+        MaterialMapIndex::MATERIAL_MAP_OCCLUSION,
+        &gun_textures["ao"],
+    );
     material.shader = (*shader).clone();
 
     let material = &mut hands.materials_mut()[2];
@@ -390,7 +394,11 @@ pub fn load_lighting_shader(rl: &mut RaylibHandle, thread: &RaylibThread) -> Sha
     shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_ALBEDO as usize] =
         shader.get_shader_location("albedoMap");
     shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_METALNESS as usize] =
-        shader.get_shader_location("mraMap");
+        shader.get_shader_location("mMap");
+    shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_ROUGHNESS as usize] =
+        shader.get_shader_location("rMap");
+    shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_OCCLUSION as usize] =
+        shader.get_shader_location("aoMap");
     shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_NORMAL as usize] =
         shader.get_shader_location("normalMap");
     shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_EMISSION as usize] =
@@ -400,12 +408,19 @@ pub fn load_lighting_shader(rl: &mut RaylibHandle, thread: &RaylibThread) -> Sha
     shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize] =
         shader.get_shader_location("viewPos");
 
-    let ambient_intensity = 0.1;
+    // let ambient_intensity = 0.3;
+    // let ambient_color = Vector4 {
+    //     x: 26.0 / 255.0,
+    //     y: 32.0 / 255.0,
+    //     z: 135.0 / 255.0,
+    //     w: 1.0,
+    // };
+    let ambient_intensity = 0.6;
     let ambient_color = Vector4 {
-        x: 26.0 / 255.0,
-        y: 32.0 / 255.0,
-        z: 135.0 / 255.0,
-        w: 255.0 / 255.0,
+        x:  64.0 / 255.0,
+        y:  64.0 / 255.0,
+        z: 200.0 / 255.0,
+        w: 1.0,
     };
 
     let ambient_loc = shader.get_shader_location("ambientColor");
@@ -455,18 +470,23 @@ pub fn handle_prompt(skins: &Vec<(Pubkey, SkinMetadata)>) -> &(Pubkey, SkinMetad
 }
 
 fn main() {
+
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        println!("Usage: {} <wallet_address>", args[0]);
+        return;
+    }
     let mut sol_client = SolanaClient::new();
-    let pubkey = Pubkey::from_str("55VgXknBzPsqhjPghNig7RQdKKFxXk6uzwZTvC7Kecfq").unwrap();
+    let pubkey = Pubkey::from_str(&args[1]).unwrap();
     let skins: Vec<(Pubkey, SkinMetadata)> = sol_client.fetch_skins(pubkey).unwrap();
 
+    if skins.len() == 0 {
+        println!("No skins found");
+        return;
+    }
+
     let choosen_skin = handle_prompt(&skins);
-
-    //fetch textures
-
-    //load
-
-    //broadcast skin address to the other players so that they can load it
-    //a state manager, at each tick it will verify if the skin is loaded and if not, it will load it.. overkill but whatever
 
     // Init raylib
     let (mut rl, thread) = raylib::init()
@@ -517,6 +537,7 @@ fn main() {
 
     let (mut hands, hands_animations) = load_hands(&mut rl, &thread, &shader, &gun_textures);
 
+    println!("Map center: {:?}", map_center);
     let mut player = Player {
         position: Vector3 {
             x: map_center.x + 10.0,
@@ -638,7 +659,7 @@ fn main() {
         // Draw
         {
             let mut dhl = rl.begin_drawing(&thread);
-            dhl.clear_background(Color::BLACK);
+            dhl.clear_background(Color::WHITE);
 
             let mut d3d = dhl.begin_mode3D(&camera);
 
@@ -679,7 +700,7 @@ fn main() {
 
                 //the no texture material
                 let mut material_count = 0;
-                if let Some(textures) = textures{
+                if let Some(textures) = textures {
                     //load textures
                     m_player.apply_gun_textures(textures);
                     material_count = 1;
@@ -689,7 +710,7 @@ fn main() {
                     &mut d3d,
                     &Matrix::translate(position.x, position.y, position.z),
                     &Matrix::rotate(Vector3::new(0.0, 1.0, 0.0), *yaw),
-                    material_count
+                    material_count,
                 );
 
                 // let world_box = BoundingBox {

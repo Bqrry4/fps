@@ -118,12 +118,21 @@ impl SolanaClient {
     
                 let data = self.sol_client.get_account_data(&metadata_pda).unwrap();
                 let metadata: Metadata = Metadata::deserialize(&mut data.as_slice()).unwrap();
-    
-                (mint, metadata.uri)
+                
+                //probably is a collection
+                if metadata.uri.trim_matches('\0').is_empty()
+                {
+                    return None;
+                }
+
+                Some((mint, metadata.uri))
     
             })
+            //Filter out None values
+            .filter_map(|nft| nft)
             .filter_map(|nft| {
                 let uri = nft.1.as_str();
+                
                 let response = get(uri).unwrap();
                 if !response.status().is_success()
                 {
