@@ -62,8 +62,14 @@ impl MPlayer {
             .position(|bone| c_bytesto_string(&bone.name).eq("mixamorig:RightHand"))
             .unwrap();
 
-        let ak_only = rl.load_model(&thread, "resources/ak_only.glb").unwrap();
+        let mut ak_only = rl.load_model(&thread, "resources/ak_only.glb").unwrap();
 
+
+        // Apply shader to model
+        for i in 0..ak_only.materials().len() {
+            let material = &mut ak_only.materials_mut()[i];
+            material.shader = (*shader).clone();
+        }
         Ok(MPlayer {
             model: m_player,
             animations: m_player_animations,

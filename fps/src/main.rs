@@ -343,48 +343,6 @@ pub fn load_hands(
     (hands, hands_animations)
 }
 
-pub fn load_m_player(
-    rl: &mut RaylibHandle,
-    thread: &RaylibThread,
-    shader: &Shader,
-) -> (Model, Vec<ModelAnimation>) {
-    let mut m_player = rl.load_model(&thread, "resources/m_player.gltf").unwrap();
-    let mut m_player_animations = rl
-        .load_model_animations(&thread, "resources/m_player.gltf")
-        .unwrap();
-
-    // Find the head bone index
-    let head_bone_index = m_player
-        .bones()
-        .unwrap()
-        .iter()
-        .position(|bone| c_bytesto_string(&bone.name).eq("mixamorig:Head"))
-        .unwrap();
-
-    let frame_poses = m_player_animations[0].frame_poses();
-    let head_transform = frame_poses[0][head_bone_index];
-
-    // Apply rotation and scale to the model
-    let scale = Matrix::scale(0.01, 0.01, 0.01);
-    let rotate = Matrix::rotate(Vector3::new(1.0, 0.0, 0.0), PI / 2.0);
-    let translate = Matrix::translate(
-        -head_transform.translation.x,
-        -head_transform.translation.y,
-        -head_transform.translation.z,
-    );
-    let transform = translate * rotate * scale;
-    m_player.set_transform(&transform);
-    rl.update_model_animation(&thread, &mut m_player, &m_player_animations[0], 0);
-
-    // Apply shader to model
-    for i in 0..m_player.materials().len() {
-        let material = &mut m_player.materials_mut()[i];
-        material.shader = (*shader).clone();
-    }
-
-    (m_player, m_player_animations)
-}
-
 pub fn load_lighting_shader(rl: &mut RaylibHandle, thread: &RaylibThread) -> Shader {
     let mut shader = rl.load_shader(
         &thread,
