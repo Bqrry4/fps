@@ -1,9 +1,31 @@
+use anchor_client::anchor_lang::AnchorDeserialize;
+use anchor_client::anchor_lang::solana_program;
+use anchor_client::anchor_lang::solana_program::pubkey;
+use anchor_client::solana_client::rpc_client::RpcClient;
+use anchor_client::solana_client::rpc_request::TokenAccountsFilter;
+use anchor_client::solana_sdk::pubkey::Pubkey;
+use mpl_token_metadata::accounts::Metadata;
+
+use sol_client::TextureField;
+use solana_account_decoder::UiAccountData;
+
+use reqwest::blocking::get;
+use serde_json::Value;
+
+mod sol_client;
+use sol_client::SkinMetadata;
+use sol_client::SolanaClient;
+
 use raylib::math::*;
 use raylib::prelude::*;
+use std::collections::HashMap;
 use std::f32::consts::FRAC_PI_2;
 use std::f32::consts::PI;
 use std::f32::consts::TAU;
+use std::io;
+use std::io::stdin;
 use std::mem::swap;
+use std::str::FromStr;
 use std::sync::atomic::Ordering;
 
 mod utils;
@@ -250,6 +272,7 @@ pub fn load_hands(
     rl: &mut RaylibHandle,
     thread: &RaylibThread,
     shader: &Shader,
+    gun_textures: &HashMap<String, WeakTexture2D>,
 ) -> (Model, Vec<ModelAnimation>) {
     let mut hands = rl
         .load_model(&thread, "resources/fps_ak.glb")
@@ -258,34 +281,31 @@ pub fn load_hands(
         .load_model_animations(&thread, "resources/fps_ak.glb")
         .expect("Could not load animations for resources/fps_ak.glb");
 
-    let ak74_color = unsafe {
-        rl.load_texture(
-            &thread,
-            "resources/textures/ak/ak74m_AlbedoTransparency.png",
-        )
-        .expect("Failed to load ak74m_AlbedoTransparency.png")
-        .make_weak()
-    };
-    let ak74_normal = unsafe {
-        rl.load_texture(&thread, "resources/textures/ak/ak74m_Normal.png")
-            .expect("Failed to load ak74m_Normal.png")
-            .make_weak()
-    };
-    let ak_ao = unsafe {
-        rl.load_texture(&thread, "resources/textures/ak/ak74m_AO.png")
-            .expect("Failed to load ak74m_AO.png")
-            .make_weak()
-    };
-    let ak_metallic = unsafe {
-        rl.load_texture(&thread, "resources/textures/ak/ak74m_Metallic.png")
-            .expect("Failed to load ak74m_Metallic.png")
-            .make_weak()
-    };
-    let ak_roughness = unsafe {
-        rl.load_texture(&thread, "resources/textures/ak/ak74m_Roughness.png")
-            .expect("Failed to load ak74m_Roughness.png")
-            .make_weak()
-    };
+    // let ak74_color = unsafe {
+    //     rl.load_texture(&thread, "resources/textures/ak/ak_a.png")
+    //         .expect("Failed to load ak_a.png")
+    //         .make_weak()
+    // };
+    // let ak74_normal = unsafe {
+    //     rl.load_texture(&thread, "resources/textures/ak/ak_n.png")
+    //         .expect("Failed to load ak_n.png")
+    //         .make_weak()
+    // };
+    // let ak_ao = unsafe {
+    //     rl.load_texture(&thread, "resources/textures/ak/ak_ao.png")
+    //         .expect("Failed to load ak_ao.png")
+    //         .make_weak()
+    // };
+    // let ak_metallic = unsafe {
+    //     rl.load_texture(&thread, "resources/textures/ak/ak_m.png")
+    //         .expect("Failed to load ak_m.png")
+    //         .make_weak()
+    // };
+    // let ak_roughness = unsafe {
+    //     rl.load_texture(&thread, "resources/textures/ak/ak_r.png")
+    //         .expect("Failed to load ak_r.png")
+    //         .make_weak()
+    // };
     let arm_color = unsafe {
         rl.load_texture(&thread, "resources/textures/arm/armColor.png")
             .expect("Failed to load armColor.png")
@@ -303,11 +323,11 @@ pub fn load_hands(
     };
 
     let material = &mut hands.materials_mut()[1];
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, ak74_color);
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_METALNESS, ak_metallic);
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_NORMAL, ak74_normal);
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ROUGHNESS, ak_roughness);
-    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_OCCLUSION, ak_ao);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &gun_textures["a"]);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_METALNESS, &gun_textures["m"]);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_NORMAL, &gun_textures["n"]);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ROUGHNESS, &gun_textures["r"]);
+    material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_OCCLUSION,&gun_textures["ao"]);
     material.shader = (*shader).clone();
 
     let material = &mut hands.materials_mut()[2];
@@ -410,7 +430,44 @@ pub fn unload_textures_from_model(rl: &mut RaylibHandle, thread: &RaylibThread, 
     });
 }
 
+pub fn handle_prompt(skins: &Vec<(Pubkey, SkinMetadata)>) -> &(Pubkey, SkinMetadata) {
+    println!("Select a skin:");
+    // Display the skin options
+    for (index, option) in skins.iter().enumerate() {
+        println!("{}: {}/{}", index + 1, option.1.name, option.1.symbol);
+    }
+
+    // Read user input
+    loop {
+        let mut input = String::new();
+        stdin().read_line(&mut input).expect("Failed to read line");
+
+        match input.trim().parse::<usize>() {
+            Ok(choice) if choice > 0 && choice <= skins.len() => {
+                let selected_option = &skins[choice - 1];
+                return selected_option;
+            }
+            _ => {
+                println!("Invalid input");
+            }
+        }
+    }
+}
+
 fn main() {
+    let mut sol_client = SolanaClient::new();
+    let pubkey = Pubkey::from_str("55VgXknBzPsqhjPghNig7RQdKKFxXk6uzwZTvC7Kecfq").unwrap();
+    let skins: Vec<(Pubkey, SkinMetadata)> = sol_client.fetch_skins(pubkey).unwrap();
+
+    let choosen_skin = handle_prompt(&skins);
+
+    //fetch textures
+
+    //load
+
+    //broadcast skin address to the other players so that they can load it
+    //a state manager, at each tick it will verify if the skin is loaded and if not, it will load it.. overkill but whatever
+
     // Init raylib
     let (mut rl, thread) = raylib::init()
         .size(SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -421,6 +478,12 @@ fn main() {
     rl.set_target_fps(60);
     rl.hide_cursor();
     rl.disable_cursor();
+
+    //-! Can load some default texs if there are no skins on chain
+    //Fetch gun textures
+    let gun_texures_bytes = SolanaClient::fetch_images_bytes(&choosen_skin.1.textures).unwrap();
+    let gun_textures = SolanaClient::fetch_textures(&mut rl, &thread, gun_texures_bytes)
+        .expect("Failed to fetch textures");
 
     let mut shader = load_lighting_shader(&mut rl, &thread);
     let view_pos_loc = shader.get_shader_location("viewPos");
@@ -445,14 +508,14 @@ fn main() {
     let map_bounding_box = map.model.get_model_bounding_box();
     let map_center = (map_bounding_box.min + map_bounding_box.max) * 0.5;
 
-    let m_player = MPlayer::load(&mut rl, &thread, &shader).unwrap();
+    let mut m_player = MPlayer::load(&mut rl, &thread, &shader).unwrap();
 
     //This is the T pose bounding box as raylib does not count transforms from animation
     let mut player_box = m_player.model.get_model_bounding_box();
     //-! Little bug with this model, y is switched
     swap(&mut player_box.min.y, &mut player_box.max.y);
 
-    let (mut hands, hands_animations) = load_hands(&mut rl, &thread, &shader);
+    let (mut hands, hands_animations) = load_hands(&mut rl, &thread, &shader, &gun_textures);
 
     let mut player = Player {
         position: Vector3 {
@@ -535,6 +598,7 @@ fn main() {
             position_z: player.position.z,
             yaw: player.orientation.y,
             pitch: player.orientation.x,
+            skin: choosen_skin.0.to_string(),
         });
 
         anim_current_frame = (anim_current_frame + 1) % player.model_animations[2].frameCount;
@@ -549,6 +613,27 @@ fn main() {
         camera.target = player.target;
 
         shader.set_shader_value(view_pos_loc, camera.position);
+
+        //fetch textures.
+        let players: Vec<(Vector3, f32, Option<HashMap<String, WeakTexture2D>>)> = net_client
+            .remotePlayers
+            .iter()
+            .map(|p| {
+                //Eh.. the urge to optimize things when its too late..
+                // So check if we have the texture data for the current player
+                let textures: Option<HashMap<String, WeakTexture2D>> =
+                    sol_client.fetch_skin(&mut rl, &thread, &p.skin);
+                (
+                    Vector3 {
+                        x: p.position_x,
+                        y: p.position_y,
+                        z: p.position_z,
+                    },
+                    p.yaw,
+                    textures,
+                )
+            })
+            .collect();
 
         // Draw
         {
@@ -575,43 +660,53 @@ fn main() {
                 Color::WHITE,
             );
 
-            //d3d.draw_model(&map.model, Vector3::new(0.0, 0.0, 0.0), 1.0, Color::WHITE);
+            d3d.draw_model(&map.model, Vector3::new(0.0, 0.0, 0.0), 1.0, Color::WHITE);
 
-            let world_box = BoundingBox {
-                min: player.bounding_box.min + player.position,
-                max: player.bounding_box.max + player.position,
-            };
-            draw_bounding_box(&mut d3d, &world_box, Color::RED);
+            // let world_box = BoundingBox {
+            //     min: player.bounding_box.min + player.position,
+            //     max: player.bounding_box.max + player.position,
+            // };
+            // draw_bounding_box(&mut d3d, &world_box, Color::RED);
 
-            // Also draw map bounding boxes for debugging
-            for bbox in &map.boundings {
-                draw_bounding_box(&mut d3d, bbox, Color::GREEN);
-            }
+            // // draw map bounding boxes for debugging
+            // for bbox in &map.boundings {
+            //     draw_bounding_box(&mut d3d, bbox, Color::GREEN);
+            // }
 
             //Draw remote players
-            net_client.remotePlayers.iter().for_each(|p| {
+            players.iter().for_each(|(position, yaw, textures)| {
+                //switch gun textures for each instance as we reuse the model.. normally one would use an atlas
+
+                //the no texture material
+                let mut material_count = 0;
+                if let Some(textures) = textures{
+                    //load textures
+                    m_player.apply_gun_textures(textures);
+                    material_count = 1;
+                }
 
                 m_player.draw(
-                    &mut d3d, 
-                    &Matrix::translate(p.position_x, p.position_y, p.position_z), 
-                    &Matrix::rotate(Vector3::new(0.0, 1.0, 0.0), p.yaw)
+                    &mut d3d,
+                    &Matrix::translate(position.x, position.y, position.z),
+                    &Matrix::rotate(Vector3::new(0.0, 1.0, 0.0), *yaw),
+                    material_count
                 );
 
-                let world_box = BoundingBox {
-                    min: player.bounding_box.min
-                        + Vector3 {
-                            x: p.position_x,
-                            y: p.position_y,
-                            z: p.position_z,
-                        },
-                    max: player.bounding_box.max
-                        + Vector3 {
-                            x: p.position_x,
-                            y: p.position_y,
-                            z: p.position_z,
-                        },
-                };
-                draw_bounding_box(&mut d3d, &world_box, Color::RED);
+                // let world_box = BoundingBox {
+                //     min: player.bounding_box.min
+                //         + Vector3 {
+                //             x: p.position_x,
+                //             y: p.position_y,
+                //             z: p.position_z,
+                //         },
+                //     max: player.bounding_box.max
+                //         + Vector3 {
+                //             x: p.position_x,
+                //             y: p.position_y,
+                //             z: p.position_z,
+                //         },
+                // };
+                // draw_bounding_box(&mut d3d, &world_box, Color::RED);
             });
 
             drop(d3d);
@@ -619,5 +714,7 @@ fn main() {
         }
     }
 
+    //Unload textures
     unload_textures_from_model(&mut rl, &thread, &player.model);
+    sol_client.clear(&mut rl, &thread);
 }

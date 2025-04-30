@@ -51,7 +51,7 @@ impl NetworkClient {
 
         //Wait for the assigned id
         loop{
-            match host_ref.service(0).map_err(|_| "connect failed")? {
+            match self.host.service(0).map_err(|_| "connect failed")? {
                 Some(Event::Receive { ref packet, .. }) => {
                     if packet.data().len() == 4 {
                         CLIENT_ID.store(i32::from_le_bytes(packet.data()[0..4].try_into().expect("slice with incorrect length")), Ordering::SeqCst);

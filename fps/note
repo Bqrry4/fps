@@ -6,3 +6,9 @@
 q:
 when to load the other's texture.. 
 a: just load default and change when received the data, match matching logic too much
+
+//fetch textures on init
+//load
+
+//broadcast skin address to the other players so that they can load it 
+//a state manager, at each tick it will verify if the skin addres was loaded and if not, it will load it.. ikik

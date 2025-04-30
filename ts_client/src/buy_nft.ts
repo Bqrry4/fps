@@ -61,5 +61,5 @@ async function buy_nft(mint: PublicKey) {
     console.log(`New edition created: TxID ${sigLink}`);
 }
 
-let mint = new PublicKey("DnUXUFJqnL1EHWZjQK9UAkkWz79q75Pm2w6WtoPN3Zc8");
+let mint = new PublicKey("6vr72S4nJHGudrXe1wswi3S693fxNTBWRPagGH8cS2iW");
 buy_nft(mint);

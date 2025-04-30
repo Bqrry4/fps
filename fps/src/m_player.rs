@@ -1,7 +1,7 @@
-use std::f32::consts::PI;
+use std::{collections::HashMap, f32::consts::PI};
 
 use raylib::{
-    math::{Matrix, Quaternion, Vector3, Vector4}, models::{Model, ModelAnimation, RaylibModel, RaylibModelAnimation}, prelude::{RaylibDraw3D, RaylibDrawHandle, RaylibMode3D}, shaders::Shader, RaylibHandle, RaylibThread
+    ffi::MaterialMapIndex, math::{Matrix, Quaternion, Vector3, Vector4}, models::{Model, ModelAnimation, RaylibMaterial, RaylibModel, RaylibModelAnimation}, prelude::{RaylibDraw3D, RaylibDrawHandle, RaylibMode3D}, shaders::Shader, texture::WeakTexture2D, RaylibHandle, RaylibThread
 };
 
 use crate::utils::c_bytesto_string;
@@ -72,7 +72,7 @@ impl MPlayer {
         })
     }
 
-    pub fn draw(&self, d3d: &mut RaylibMode3D<RaylibDrawHandle>, translate: &Matrix, rotate: &Matrix)
+    pub fn draw(&self, d3d: &mut RaylibMode3D<RaylibDrawHandle>, translate: &Matrix, rotate: &Matrix, gun_material_count: u8)
     {
         let model_transform = self.model.transform().clone() * (*rotate) * (*translate);
 
@@ -126,9 +126,18 @@ impl MPlayer {
 
         d3d.draw_mesh(
             self.ak_only.meshes()[0].clone(),
-            self.ak_only.materials()[0].clone(),
+            self.ak_only.materials()[gun_material_count as usize].clone(),
             gun_transform,
         );
     }
 
+    pub fn apply_gun_textures(&mut self,  gun_textures: &HashMap<String, WeakTexture2D>)
+    {
+        let material = &mut self.ak_only.materials_mut()[1];
+        material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &gun_textures["a"]);
+        material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_METALNESS, &gun_textures["m"]);
+        material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_NORMAL, &gun_textures["n"]);
+        material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_ROUGHNESS, &gun_textures["r"]);
+        material.set_material_texture(MaterialMapIndex::MATERIAL_MAP_OCCLUSION,&gun_textures["ao"]);
+    }
 }

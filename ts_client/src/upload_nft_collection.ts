@@ -69,7 +69,7 @@ async function upload_nft_to_collection(creator: PublicKey, collectionMint: Publ
         name,
         symbol,
         uri,
-        new BN(1),
+        new BN(5),
     )
     .accounts({
         creator: creator,
@@ -91,12 +91,12 @@ async function upload_metadata(name: String, symbol: String)
 {
     console.log("Uploading metadata...");
     const assets = {
-        "p": "../../skins/ak_1/ak_p.png", // preview
-        "a": "../../skins/ak_1/ak_a.png",
-        "r": "../../skins/ak_1/ak_r.png",
-        "n": "../../skins/ak_1/ak_n.png",
-        "m": "../../skins/ak_1/ak_m.png",
-        "ao": "../../skins/ak_1/ak_ao.png",
+        "p": "../../skins/turtle_ak/ak_p.png", // preview
+        "a": "../../skins/turtle_ak/ak_a.png",
+        "r": "../../skins/turtle_ak/ak_r.png",
+        "n": "../../skins/turtle_ak/ak_n.png",
+        "m": "../../skins/turtle_ak/ak_m.png",
+        "ao": "../../skins/turtle_ak/ak_ao.png",
     }
 
     const attributes = {};
@@ -123,6 +123,7 @@ async function upload_metadata(name: String, symbol: String)
             files: [{type: "image/png", uri: IMG_URI}]
         },
         textures : attributes,
+        identifier : "fps+bq", //"magic field to say the nft is compatible with the game"
     };
 
     const metadataUri = await umi.uploader.uploadJson(metadata);
@@ -131,15 +132,22 @@ async function upload_metadata(name: String, symbol: String)
 
 async function upload_nft() {
 
-    const n_name = "DEF_Ak";
-    const n_symbol = "DFAK";
-    const c_name = "Default";
-    const c_symbol = "DEF";
+    // const n_name = "CAT_Ak";
+    // const n_symbol = "C_AK";
+    // const c_name = "PINK_CAT";
+    // const c_symbol = "PCAT";
+
+
+    const n_name = "TUR_Ak";
+    const n_symbol = "T_AK";
+    const c_name = "GREEN_TURTLE";
+    const c_symbol = "GTUR";
+
 
     let uri = await upload_metadata(n_name, n_symbol);
 
     let collectionMint = await create_collection(keypair.publicKey, c_name, c_symbol);
-    let nftMint = await upload_nft_to_collection(keypair.publicKey, collectionMint, "DEF_Ak", "DFAK", uri);
+    let nftMint = await upload_nft_to_collection(keypair.publicKey, collectionMint, n_name, n_symbol, uri);
 
     console.log(`Nft uploaded ${nftMint}`);
 }
